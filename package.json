@@ -1,0 +1,315 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  Activity,
+  Lock,
+  UserCheck,
+  Mic,
+  MicOff,
+  Cpu,
+  Terminal,
+  X,
+  Settings,
+  ShieldCheck,
+  Power,
+  Send
+} from 'lucide-react';
+
+const App = () => {
+  const [view, setView] = useState('initialization');
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [chatInput, setChatInput] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [voiceText, setVoiceText] = useState('');
+  const [isGesturing, setIsGesturing] = useState(false);
+  const [imageError, setImageError] = useState(false);
+  
+  // High-fidelity holographic avatar asset
+  const characterAsset = "https://i.imgur.com/eB3jV87.png";
+
+  const [chatMessages, setChatMessages] = useState([
+    { role: 'system', text: "Neural link established. I am JARVES v6.2. Awaiting tactical directive.", intent: 'Greeting' }
+  ]);
+
+  // --- API CONFIGURATION ---
+  // Safely handle process environment for various deployment contexts
+  const getApiKey = () => {
+    try {
+      if (typeof process !== 'undefined' && process.env && process.env.REACT_APP_GEMINI_KEY) {
+        return process.env.REACT_APP_GEMINI_KEY;
+      }
+    } catch (e) {
+      // Fallback if process is not defined
+    }
+    return ""; 
+  };
+
+  const apiKey = getApiKey();
+  const audioContextRef = useRef(null);
+
+  useEffect(() => {
+    // Ambient breathing/floating animation simulation
+    const gestureInterval = setInterval(() => {
+      setIsGesturing(true);
+      setTimeout(() => setIsGesturing(false), 2000);
+    }, 8000);
+    return () => clearInterval(gestureInterval);
+  }, []);
+
+  // Neural Response Generation
+  const generateAIResponse = async (userPrompt) => {
+    const key = getApiKey();
+    if (!key) return "API Key missing. Please configure REACT_APP_GEMINI_KEY in your settings.";
+    
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${key}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: userPrompt }] }],
+            systemInstruction: { parts: [{ text: "You are JARVES, a highly advanced tactical AI assistant. Tone: Professional, efficient, loyal. Keep responses concise." }] }
+          })
+        }
+      );
+      const data = await response.json();
+      return data.candidates?.[0]?.content?.parts?.[0]?.text || "Tactical error: Could not retrieve neural response.";
+    } catch (error) {
+      return "Connection to core intelligence interrupted.";
+    }
+  };
+
+  // Vocal Synthesis (TTS)
+  const speakResponse = async (text) => {
+    const key = getApiKey();
+    if (!key) return;
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${key}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: `Say efficiently: ${text}` }] }],
+            generationConfig: {
+              responseModalities: ["AUDIO"],
+              speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } } }
+            }
+          })
+        }
+      );
+      const data = await response.json();
+      const base64Audio = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      if (base64Audio) playPCM(base64Audio);
+    } catch (error) {
+      console.error("TTS generation failed.");
+    }
+  };
+
+  const playPCM = async (base64Data) => {
+    const binaryString = window.atob(base64Data);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
+    
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+    }
+    
+    const audioContext = audioContextRef.current;
+    const pcmData = new Int16Array(bytes.buffer);
+    const float32Data = new Float32Array(pcmData.length);
+    for (let i = 0; i < pcmData.length; i++) float32Data[i] = pcmData[i] / 32768.0;
+    
+    const buffer = audioContext.createBuffer(1, float32Data.length, 24000);
+    buffer.getChannelData(0).set(float32Data);
+    
+    const source = audioContext.createBufferSource();
+    source.buffer = buffer;
+    source.connect(audioContext.destination);
+    source.start();
+  };
+
+  const handleSendMessage = async (textOverride) => {
+    const message = textOverride || chatInput;
+    if (!message.trim() || isProcessing) return;
+    
+    setChatMessages(prev => [...prev, { role: 'user', text: message }]);
+    setChatInput('');
+    setIsProcessing(true);
+    setIsGesturing(true);
+
+    const aiText = await generateAIResponse(message);
+    setChatMessages(prev => [...prev, { role: 'system', text: aiText }]);
+    setIsProcessing(false);
+    
+    await speakResponse(aiText);
+    setTimeout(() => setIsGesturing(false), 2000);
+  };
+
+  const NeonEnvironment = () => (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none z-0 bg-[#010206]">
+      <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[120%] h-[400px] bg-cyan-500/10 blur-[120px] rounded-[100%]"></div>
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,_rgba(34,211,238,0.08),_transparent_70%)]"></div>
+      <div className="absolute bottom-0 w-full h-1/2 bg-[linear-gradient(to_right,#ffffff05_1px,transparent_1px),linear-gradient(to_bottom,#ffffff05_1px,transparent_1px)] bg-[size:60px_60px] [transform:rotateX(60deg)] [mask-image:linear-gradient(to_top,black,transparent)]"></div>
+    </div>
+  );
+
+  if (view === 'initialization') {
+    return (
+      <div className="h-screen w-full bg-[#010206] flex flex-col items-center justify-between relative overflow-hidden font-sans">
+        <NeonEnvironment />
+        
+        <div className="w-full z-40 p-6 flex justify-between items-start">
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2 text-[10px] font-black text-cyan-400 tracking-[0.3em] uppercase">
+               <ShieldCheck size={14} /> JARVES PROTOCOL 6.2
+            </div>
+            <div className="w-32 h-[1px] bg-gradient-to-r from-cyan-500 to-transparent opacity-50"></div>
+          </div>
+          <button onClick={() => setIsVerifying(true)} className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-[10px] font-bold text-slate-400 hover:text-cyan-400 hover:border-cyan-500/50 transition-all uppercase tracking-widest flex items-center gap-2 backdrop-blur-sm">
+             <Lock size={12} /> Access Control
+           </button>
+        </div>
+
+        <div className="relative flex-1 w-full flex items-center justify-center z-10">
+          <div className="relative w-[600px] h-[600px] flex items-center justify-center">
+            <div className="absolute bottom-10 w-80 h-16 bg-cyan-500/15 blur-2xl rounded-full animate-pulse"></div>
+            
+            <div className={`relative transition-all duration-1000 ease-in-out transform ${isGesturing ? 'scale-105 -translate-y-4' : 'scale-100'}`}>
+              {!imageError ? (
+                <img 
+                  src={characterAsset} 
+                  alt="JARVES" 
+                  onError={() => setImageError(true)} 
+                  className="h-[480px] object-contain drop-shadow-[0_0_60px_rgba(34,211,238,0.4)] z-20"
+                />
+              ) : (
+                <div className="h-[400px] w-48 bg-cyan-500/20 border border-cyan-500/40 rounded-full flex items-center justify-center flex-col gap-4 text-cyan-500 animate-pulse">
+                   <UserCheck size={64} />
+                   <span className="text-[10px] font-black uppercase tracking-widest">Neural Link Error</span>
+                </div>
+              )}
+            </div>
+
+            <div className={`absolute inset-0 flex items-center justify-center pointer-events-none transition-all duration-700 ${isListening ? 'opacity-100 scale-100' : 'opacity-0 scale-125'}`}>
+               <div className="w-[520px] h-[520px] border-[1px] border-cyan-500/20 rounded-full animate-[spin_12s_linear_infinite]"></div>
+            </div>
+          </div>
+        </div>
+
+        <div className="w-full max-w-3xl px-10 z-50 mb-12 space-y-6">
+          <div className="h-40 overflow-y-auto mb-4 flex flex-col gap-3 px-4 scrollbar-hide">
+            {chatMessages.map((msg, i) => (
+              <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                 <div className={`px-5 py-3 rounded-2xl text-xs font-medium max-w-[85%] backdrop-blur-md ${msg.role === 'user' ? 'bg-cyan-500 text-black font-bold' : 'bg-white/5 border border-white/10 text-slate-300'}`}>
+                   {msg.text}
+                 </div>
+              </div>
+            ))}
+            {isProcessing && <div className="text-[10px] text-cyan-500 font-black animate-pulse tracking-[0.3em] uppercase ml-2">Processing Neural Input...</div>}
+          </div>
+
+          {!isVerifying ? (
+            <div className="relative group">
+               <div className="bg-black/60 backdrop-blur-3xl border border-white/10 rounded-[30px] p-2 flex items-center shadow-2xl focus-within:border-cyan-500/50 transition-all">
+                 <button onClick={() => setIsListening(!isListening)} className={`p-4 rounded-full transition-all ${isListening ? 'bg-cyan-500 text-black shadow-[0_0_25px_#22d3ee]' : 'text-slate-500 hover:text-cyan-400'}`}>
+                   {isListening ? <MicOff size={24} /> : <Mic size={24} />}
+                 </button>
+                 <input 
+                  value={chatInput} 
+                  onChange={(e) => setChatInput(e.target.value)} 
+                  onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()} 
+                  placeholder="Request tactical directive..." 
+                  className="flex-1 bg-transparent border-none outline-none p-4 text-white font-medium placeholder:text-slate-700" 
+                 />
+                 <button onClick={() => handleSendMessage()} className="bg-cyan-500 text-black p-4 rounded-full transition-all active:scale-90 shadow-lg group-hover:bg-cyan-400">
+                   <Send size={20} />
+                 </button>
+               </div>
+            </div>
+          ) : (
+            <div className="bg-black/95 border border-cyan-500/40 rounded-[30px] p-4 animate-in zoom-in-95 duration-300 flex items-center shadow-[0_0_50px_rgba(34,211,238,0.15)]">
+              <input 
+                autoFocus 
+                onKeyDown={(e) => e.key === 'Enter' && setView('dashboard')} 
+                placeholder="ENTER AUTHENTICATION KEY..." 
+                className="flex-1 bg-transparent border-none text-white text-sm font-black py-2 outline-none uppercase tracking-widest px-4 placeholder:text-slate-800" 
+              />
+              <button onClick={() => setIsVerifying(false)} className="p-2 text-slate-500 hover:text-white"><X size={20} /></button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-screen bg-[#010206] text-slate-100 overflow-hidden relative">
+      <NeonEnvironment />
+      
+      <aside className="w-80 border-r border-white/5 bg-black/50 backdrop-blur-3xl p-8 flex flex-col z-20">
+        <div className="flex items-center gap-4 mb-12 pb-10 border-b border-white/5">
+          <div className="w-12 h-12 bg-cyan-500 rounded-xl flex items-center justify-center text-black">
+            <Cpu size={24} />
+          </div>
+          <div>
+            <h1 className="font-black text-xl tracking-tighter">JARVES</h1>
+            <p className="text-[9px] text-cyan-500 font-mono tracking-widest uppercase mt-1">Tactical Node v6.2</p>
+          </div>
+        </div>
+        
+        <nav className="flex-1 space-y-4">
+          <NavItem icon={<Settings size={18} />} label="System Config" active />
+          <NavItem icon={<Activity size={18} />} label="Neural Grid" />
+        </nav>
+
+        <button 
+          onClick={() => setView('initialization')} 
+          className="mt-auto p-5 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-500 font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-3 hover:bg-red-500 hover:text-white transition-all"
+        >
+          <Power size={14} /> Terminate Link
+        </button>
+      </aside>
+
+      <main className="flex-1 flex flex-col relative z-10 p-12">
+        <header className="mb-12">
+          <h2 className="text-sm font-black uppercase tracking-widest text-cyan-400">Command Terminal</h2>
+          <p className="text-[10px] text-slate-500 uppercase font-bold">Authorized Operator: Master</p>
+        </header>
+
+        <div className="grid grid-cols-2 gap-8">
+           <ControlCard title="Core Frequency" value="432Hz" icon={Activity} color="text-cyan-500" />
+           <ControlCard title="Safety Status" value="Online" icon={ShieldCheck} color="text-blue-500" />
+           
+           <div className="col-span-2 p-8 bg-white/5 rounded-[40px] border border-white/10 font-mono text-[10px] text-slate-500">
+              <p className="text-cyan-400/60 mb-2">&gt; [SECURE] NEURAL CORE HANDSHAKE SUCCESSFUL</p>
+              <p className="mb-2">&gt; [SYSTEM] KORE_VOICE_ENGINE_v4.0.1 ACTIVE</p>
+              <p>&gt; [SYSTEM] AWAITING COMMANDS...</p>
+           </div>
+        </div>
+      </main>
+    </div>
+  );
+};
+
+const ControlCard = ({ title, value, icon: Icon, color }) => (
+  <div className="bg-white/5 border border-white/5 p-8 rounded-[40px] hover:border-cyan-500/30 transition-all backdrop-blur-sm">
+    <div className="flex justify-between items-start mb-6">
+      <div className="p-4 bg-black/40 rounded-2xl">
+        <Icon className={color} size={24} />
+      </div>
+      <span className="text-2xl font-black text-white italic tracking-tighter">{value}</span>
+    </div>
+    <h3 className="text-[11px] font-black uppercase tracking-widest text-slate-300">{title}</h3>
+  </div>
+);
+
+const NavItem = ({ icon, label, active }) => (
+  <div className={`flex items-center gap-5 p-5 rounded-2xl cursor-pointer transition-all ${active ? 'bg-cyan-500 text-black font-black' : 'text-slate-500 hover:text-white hover:bg-white/5'}`}>
+    {icon}
+    <span className="text-[11px] font-black uppercase tracking-widest italic">{label}</span>
+  </div>
+);
+
+export default App;
